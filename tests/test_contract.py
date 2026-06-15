@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from kb import contract
-from kb.contract import ContractError
+from rhizome import contract
+from rhizome.contract import ContractError
 
 
 def _mini_parse_frontmatter(text: str) -> dict:
