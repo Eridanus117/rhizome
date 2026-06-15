@@ -178,7 +178,7 @@ class TestRender(unittest.TestCase):
 
     def test_known_asset_prefixes_env_additive(self):
         # Project-specific prefixes are injected via env (never hard-coded in
-        # the public source); the effective set is default ∪ env.
+        # the public source); the effective set is default + env.
         with mock.patch.dict(os.environ, {contract.ASSET_PREFIXES_ENV: "alpha,beta"}):
             known = contract.known_asset_prefixes()
         self.assertTrue(frozenset(contract.ASSET_PREFIXES) <= known)
