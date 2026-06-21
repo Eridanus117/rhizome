@@ -57,11 +57,15 @@ class TestDoctor(unittest.TestCase):
         reg.write_text(f'workspace_root = "{ws}"\n', encoding="utf-8")
         return ws, reg
 
-    def _source(self, reg: Path, name: str, repo: Path | None = None) -> None:
+    def _source(
+        self, reg: Path, name: str, repo: Path | None = None, *, legacy: bool = False
+    ) -> None:
         text = reg.read_text(encoding="utf-8").rstrip("\n") + "\n\n"
         text += f'[[source]]\nname = "{name}"\n'
         if repo is not None:
             text += f'path = "{repo}"\n'
+        if legacy:
+            text += "legacy = true\n"
         reg.write_text(text, encoding="utf-8")
 
     def _repo(
@@ -230,6 +234,30 @@ class TestDoctor(unittest.TestCase):
             self.assertFalse(report["ok"])  # one fail → fleet fail
             ok = {r["name"]: r["ok"] for r in report["sources"]}
             self.assertEqual(ok, {"good": True, "bad": False})
+
+    def test_legacy_source_skips_gate_and_index_checks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws, reg = self._ws(tmp)
+            self._repo(ws, "normal")
+            legacy = self._repo(ws, "legacy", gate=None, domain=None)
+            (legacy / "raw-note.md").write_text("# raw\n", encoding="utf-8")
+            self._source(reg, "normal")
+            self._source(reg, "legacy", legacy=True)
+            report = doctor.run_doctor(registry=reg, which=_which)
+            self.assertTrue(report["ok"])
+            self.assertEqual(
+                [r["name"] for r in report["sources"]], ["normal", "legacy"]
+            )
+            row = report["sources"][1]
+            self.assertTrue(row["legacy"])
+            self.assertEqual(
+                {c["check"] for c in row["checks"]},
+                {"repo-exists", "legacy-source"},
+            )
+            self.assertEqual({c["status"] for c in row["checks"]}, {doctor.PASS})
+            self.assertIn(
+                "INDEX checks intentionally skipped", row["checks"][1]["detail"]
+            )
 
     # ---- CLI wiring ---------------------------------------------------------
 

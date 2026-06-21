@@ -123,13 +123,20 @@ def _index_present(repo_root: Path) -> tuple[bool, str, list[str]]:
 
 
 def check_source(
-    name: str, repo_path: Path, *, gate_resolvable: tuple[bool, str]
+    name: str,
+    repo_path: Path,
+    *,
+    gate_resolvable: tuple[bool, str],
+    legacy: bool = False,
 ) -> dict:
     """Probe one registered source repo. Pure (no printing).
 
     `gate_resolvable` is computed once for the fleet (it is a workstation-global
     PATH fact, identical for every repo) and threaded in so each row reports it.
     A missing repo can run no checks → it is a fail with that single reason.
+    `legacy=True` source rows are raw/unverified recall lanes, not normal KB
+    authoring repos, so they only need to exist; gate and INDEX checks are
+    intentionally skipped.
     """
     repo_path = repo_path.resolve()
     if not repo_path.is_dir():
@@ -143,6 +150,29 @@ def check_source(
                     "status": FAIL,
                     "detail": f"registered path does not exist: {repo_path}",
                 }
+            ],
+        }
+
+    if legacy:
+        return {
+            "name": name,
+            "path": str(repo_path),
+            "legacy": True,
+            "ok": True,
+            "checks": [
+                {
+                    "check": "repo-exists",
+                    "status": PASS,
+                    "detail": f"registered legacy/raw source exists: {repo_path}",
+                },
+                {
+                    "check": "legacy-source",
+                    "status": PASS,
+                    "detail": (
+                        "legacy/raw/unverified recall lane — normal KB gate and "
+                        "INDEX checks intentionally skipped"
+                    ),
+                },
             ],
         }
 
@@ -170,6 +200,7 @@ def check_source(
     return {
         "name": name,
         "path": str(repo_path),
+        "legacy": False,
         "ok": gate_ok and res_ok and idx_ok,
         "checks": checks,
     }
@@ -184,13 +215,18 @@ def run_doctor(*, registry: Path | None = None, which=shutil.which) -> dict:
     registry itself is missing/unreadable (loud, never a silent empty run).
     """
     reg = registry or sources.find_registry()
-    entries = sources.load_sources(reg)
+    entries = sources.load_source_entries(reg)
     # The gate command resolves (or not) once for the whole workstation — it is
     # a PATH fact, not per-repo. Probe it a single time, report it on every row.
     gate_resolvable = _gate_resolvable(which)
     results = [
-        check_source(name, path, gate_resolvable=gate_resolvable)
-        for name, path in entries
+        check_source(
+            entry["name"],
+            entry["path"],
+            gate_resolvable=gate_resolvable,
+            legacy=bool(entry.get("legacy")),
+        )
+        for entry in entries
     ]
     return {
         "registry": str(reg),
